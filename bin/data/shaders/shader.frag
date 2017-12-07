@@ -11,6 +11,61 @@ const float MAX_DIST = 100.0; // レイの最大距離
 const float EPSILON = 0.0001; // ０に限りなく近い数
 
 
+// x軸で回転
+mat3 rotateX(float theta) {
+    float c = cos(u_time);
+    float s = sin(u_time);
+    return mat3 (
+                 vec3(1, 0, 0),
+                 vec3(0, c, -s),
+                 vec3(0, s, c)
+                 );
+}
+
+// y軸で回転
+mat3 rotateY(float theta) {
+    float c = cos(u_time);
+    float s = sin(u_time);
+    return mat3 (
+                 vec3(c, 0, s),
+                 vec3(0, 1, 0),
+                 vec3(-s, 0, c)
+                 );
+}
+
+// z軸で回転
+mat3 rotateZ(float theta) {
+    float c = cos(u_time);
+    float s = sin(u_time);
+    return mat3 (
+                 vec3(c, -s, 0),
+                 vec3(s, c, 0),
+                 vec3(0, 0, 1)
+                 );
+}
+
+// xyz同時に回転
+// axisはどの軸にどれだけ回転させたいか. もし(1.0, 0.5, 0.0)だとx軸に対して100%y軸に対して50%ということになる
+mat3 rotate(float theta, vec3 axis) {
+    vec3 a = normalize(axis);
+    float c = cos(u_time);
+    float s = sin(u_time);
+    float r = 1.0 - c;
+    return mat3 (
+                 a.x * a.x * r + c,
+                 a.y * a.x * r + a.z * s,
+                 a.z * a.x * r - a.y * s,
+                 a.x * a.y * r - a.z * s,
+                 a.y * a.y * r + c,
+                 a.z * a.y * r + a.x * s,
+                 a.x * a.z * r + a.y * s,
+                 a.y * a.z * r - a.x * s,
+                 a.z * a.z * r + c
+                 );
+}
+
+
+
 // intersetSDFでは、重なった部分のみを描写する
 // 前提として、negative値または限りなく０に近い値をdistance functionとして返すと、そこがオブジェクトの表面として画面に描かれる
 // 両方がnegative値または限りなく０に近い値を示す場合、それはまさに両方が重なっている場合、のみmax関数でも小さい値を返すことになるので描画される。
@@ -52,8 +107,11 @@ float cubeSDF(vec3 p, vec3 cubeSize) {
 
 // この関数をdistance_functionのハブとしておくことで、複数オブジェクトを描いたり、重ねて描いたりすることを容易にする。
 float sceneSDF(vec3 samplePoint) {
-    //return sphereSDF(samplePoint, 1.0);
-    return cubeSDF(samplePoint, vec3(1.0));
+    float sphereDist = sphereSDF(samplePoint/1.2, 1.0) * 1.2;
+    // cubeのsamplePointにvec3(0.0, 1.0, 0.0)を加えると、下に1.0だけズレる。
+    // 描かれるのは常に0付近の値と考えれば、追加前のy軸に対して-1.0だったところに1.0追加されると-1.0+1.0で0.0になるから、cubeが1.0分下にズレる
+    float cubeDist = cubeSDF(samplePoint + vec3(0.0, sin(radians(90)), 0.0), vec3(1.0));
+    return intersectSDF(cubeDist, sphereDist);
 }
 
 // ここでレイを作る。
@@ -166,6 +224,8 @@ mat4 viewMatrix(vec3 eye, vec3 center, vec3 up) {
 }
 
 
+
+
 void main () {
     // スクリーン座標を上下左右を-1~1にする (左下が-1, -1で右上が1,1)
     vec2 st = (gl_FragCoord.xy * 2.0 - u_resolution.xy) / min(u_resolution.x, u_resolution.y);
@@ -173,7 +233,7 @@ void main () {
     // fieldOfViewの角度を渡してレイを作成
     vec3 viewDir = rayDirection(45.0);
     // カメラの位置を決める
-    vec3 eye = vec3(8.0, 5.0, 7.0);
+    vec3 eye = vec3(8.0, sin(u_time*0.2)*5.0, 7.0);
     
     // viewMatrixを作る。ここでカメラ中心の座標にする(openGLの行列チュートリアル見ると分かりやすい)
     mat4 viewToWorld = viewMatrix(eye, vec3(0.0, 0.0, 0.0), vec3(0.0, 1.0, 0.0));

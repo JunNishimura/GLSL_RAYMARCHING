@@ -18,6 +18,8 @@ void ofApp::update(){
 
 //--------------------------------------------------------------
 void ofApp::draw(){
+    ofSetWindowTitle("FPS : " + ofToString(ofGetFrameRate()));
+    
     shader.begin();
     shader.setUniform1f("u_time", ofGetElapsedTimef());
     shader.setUniform2f("u_resolution", ofGetWidth(), ofGetHeight());
