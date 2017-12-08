@@ -98,12 +98,30 @@ float sphereSDF(vec3 samplePoint, float sphereSize) {
 // distance function of cube
 float cubeSDF(vec3 p, vec3 cubeSize) {
     // 各点の絶対値からcubeの大きさをひく（cubeの大きさは実際にはcubeSizeの二倍になる）
-    // insideは０又はマイナス値なる。outsideはプラス値になる
+    // insideは0またはマイナス値なる。outsideは0またはプラス値になる
     vec3 d = abs(p) - cubeSize;
     float insideDistance = min(max(d.x, max(d.y, d.z)), 0.0);
     float outsideDistance = length(max(d, 0.0));
     return insideDistance + outsideDistance;
 }
+
+// distance function of cylinder
+// h : height
+// r : radius
+float cylinderSDF( vec3 p, float h, float r) {
+    // 単純にxy座標において、半径rの円内にあるかどうか。半径ないならマイナス値で半径外ならプラス値になる。円上なら0になる
+    float inOutRadius = length(p.xz) - r;
+    // 単純にz軸の絶対値をとることで、原点からの純粋な距離を測りそこから円柱のHeightの半分だけ引く。(半分なのは原点を挟んでいて、z軸の絶対値から引いているから)
+    float inOutHeight = abs(p.y) - h/2.0;
+    // もし円柱の内側なら両方がマイナス値なので、そのマイナス値が返される。他は０になる
+    float insideDistance = min(max(inOutRadius, inOutHeight), 0.0);
+    // もし円柱の内側なら両方がマイナス値なので、max関数で０になる。もしoutsideなら０以上のプラス値が返させる。
+    float outsideDistance = length(max(vec2(inOutRadius, inOutHeight), 0.0));
+    // 0もしくは,限りなく０に近い値を返す点において、オブジェクトを描く
+    return insideDistance + outsideDistance;
+}
+
+
 
 // この関数をdistance_functionのハブとしておくことで、複数オブジェクトを描いたり、重ねて描いたりすることを容易にする。
 float sceneSDF(vec3 samplePoint) {
@@ -111,7 +129,8 @@ float sceneSDF(vec3 samplePoint) {
     // cubeのsamplePointにvec3(0.0, 1.0, 0.0)を加えると、下に1.0だけズレる。
     // 描かれるのは常に0付近の値と考えれば、追加前のy軸に対して-1.0だったところに1.0追加されると-1.0+1.0で0.0になるから、cubeが1.0分下にズレる
     float cubeDist = cubeSDF(samplePoint + vec3(0.0, sin(radians(90)), 0.0), vec3(1.0));
-    return intersectSDF(cubeDist, sphereDist);
+//    return intersectSDF(cubeDist, sphereDist);
+    return cylinderSDF(samplePoint, 2.0, .250);
 }
 
 // ここでレイを作る。
