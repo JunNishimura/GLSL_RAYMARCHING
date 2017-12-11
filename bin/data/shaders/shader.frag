@@ -13,8 +13,8 @@ const float EPSILON = 0.0001; // ０に限りなく近い数
 
 // x軸で回転
 mat3 rotateX(float theta) {
-    float c = cos(u_time);
-    float s = sin(u_time);
+    float c = cos(theta);
+    float s = sin(theta);
     return mat3 (
                  vec3(1, 0, 0),
                  vec3(0, c, -s),
@@ -24,8 +24,8 @@ mat3 rotateX(float theta) {
 
 // y軸で回転
 mat3 rotateY(float theta) {
-    float c = cos(u_time);
-    float s = sin(u_time);
+    float c = cos(theta);
+    float s = sin(theta);
     return mat3 (
                  vec3(c, 0, s),
                  vec3(0, 1, 0),
@@ -35,8 +35,8 @@ mat3 rotateY(float theta) {
 
 // z軸で回転
 mat3 rotateZ(float theta) {
-    float c = cos(u_time);
-    float s = sin(u_time);
+    float c = cos(theta);
+    float s = sin(theta);
     return mat3 (
                  vec3(c, -s, 0),
                  vec3(s, c, 0),
@@ -110,9 +110,9 @@ float cubeSDF(vec3 p, vec3 cubeSize) {
 // r : radius
 float cylinderSDF( vec3 p, float h, float r) {
     // 単純にxy座標において、半径rの円内にあるかどうか。半径ないならマイナス値で半径外ならプラス値になる。円上なら0になる
-    float inOutRadius = length(p.xz) - r;
+    float inOutRadius = length(p.xy) - r;
     // 単純にz軸の絶対値をとることで、原点からの純粋な距離を測りそこから円柱のHeightの半分だけ引く。(半分なのは原点を挟んでいて、z軸の絶対値から引いているから)
-    float inOutHeight = abs(p.y) - h/2.0;
+    float inOutHeight = abs(p.z) - h/2.0;
     // もし円柱の内側なら両方がマイナス値なので、そのマイナス値が返される。他は０になる
     float insideDistance = min(max(inOutRadius, inOutHeight), 0.0);
     // もし円柱の内側なら両方がマイナス値なので、max関数で０になる。もしoutsideなら０以上のプラス値が返させる。
@@ -125,12 +125,38 @@ float cylinderSDF( vec3 p, float h, float r) {
 
 // この関数をdistance_functionのハブとしておくことで、複数オブジェクトを描いたり、重ねて描いたりすることを容易にする。
 float sceneSDF(vec3 samplePoint) {
-    float sphereDist = sphereSDF(samplePoint/1.2, 1.0) * 1.2;
-    // cubeのsamplePointにvec3(0.0, 1.0, 0.0)を加えると、下に1.0だけズレる。
-    // 描かれるのは常に0付近の値と考えれば、追加前のy軸に対して-1.0だったところに1.0追加されると-1.0+1.0で0.0になるから、cubeが1.0分下にズレる
-    float cubeDist = cubeSDF(samplePoint + vec3(0.0, sin(radians(90)), 0.0), vec3(1.0));
-//    return intersectSDF(cubeDist, sphereDist);
-    return cylinderSDF(samplePoint, 2.0, .250);
+    
+//    float sphereDist = sphereSDF(samplePoint/1.2, 1.0) * 1.2;
+//    // cubeのsamplePointにvec3(0.0, 1.0, 0.0)を加えると、下に1.0だけズレる。
+//    // 描かれるのは常に0付近の値と考えれば、追加前のy軸に対して-1.0だったところに1.0追加されると-1.0+1.0で0.0になるから、cubeが1.0分下にズレる
+//    float cubeDist = cubeSDF(samplePoint + vec3(0.0, sin(radians(90)), 0.0), vec3(1.0));
+    
+    samplePoint = rotateY(u_time/2.0) * samplePoint;
+    // make some cylinders
+    float cylinderRadius = 0.4 + (1.0 - 0.4) * (1.0 + sin(u_time*1.7)) / 2.0;
+    float cylinder1 = cylinderSDF( samplePoint, 2.0, cylinderRadius );
+    float cylinder2 = cylinderSDF( rotateX(radians(90.0)) * samplePoint, 2.0, cylinderRadius );
+    float cylinder3 = cylinderSDF( rotateY(radians(90.0)) * samplePoint ,2.0, cylinderRadius );
+    
+    // make cube and sphere
+    float cube = cubeSDF(samplePoint, vec3(0.9, 0.9, 0.9));
+    float sphere = sphereSDF( samplePoint, 1.2 );
+    
+    // basic ball info
+    float ballOffset = 0.4 + 1.0 * sin( 1.7 * u_time );
+    float ballRadius = 0.3;
+    // make several balls and add some offset to each ball
+    float balls = sphereSDF( samplePoint + vec3(ballOffset, 0.0, 0.0), ballRadius);
+    balls = unionSDF(balls, sphereSDF( samplePoint + vec3(-ballOffset, 0.0, 0.0), ballRadius ));
+    balls = unionSDF(balls, sphereSDF( samplePoint + vec3(0.0, ballOffset, 0.0), ballRadius ));
+    balls = unionSDF(balls, sphereSDF( samplePoint + vec3(0.0, -ballOffset, 0.0), ballRadius ));
+    balls = unionSDF(balls, sphereSDF( samplePoint + vec3(0.0, 0.0, ballOffset), ballRadius ));
+    balls = unionSDF(balls, sphereSDF( samplePoint + vec3(0.0, 0.0, -ballOffset), ballRadius ));
+    
+    // make center objects
+    float csgNet = differenceSDF( intersectSDF(cube, sphere), unionSDF(cylinder1, unionSDF(cylinder2, cylinder3)) );
+    
+    return unionSDF(balls, csgNet);
 }
 
 // ここでレイを作る。
@@ -252,7 +278,8 @@ void main () {
     // fieldOfViewの角度を渡してレイを作成
     vec3 viewDir = rayDirection(45.0);
     // カメラの位置を決める
-    vec3 eye = vec3(8.0, sin(u_time*0.2)*5.0, 7.0);
+//    vec3 eye = vec3(8.0, sin(u_time*0.2)*5.0, 7.0);
+    vec3 eye = vec3(8.0, 5.0, 7.0);
     
     // viewMatrixを作る。ここでカメラ中心の座標にする(openGLの行列チュートリアル見ると分かりやすい)
     mat4 viewToWorld = viewMatrix(eye, vec3(0.0, 0.0, 0.0), vec3(0.0, 1.0, 0.0));
